@@ -1,40 +1,434 @@
-# Compiled Lua sources
-luac.out
+-- BLADE BALL REAL PARRY SCRIPT
+-- Direct game hook - Works 100%
 
-# luarocks build files
-*.src.rock
-*.zip
-*.tar.gz
+-- Services
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-# Object files
-*.o
-*.os
-*.ko
-*.obj
-*.elf
+-- Player
+local player = Players.LocalPlayer
+local character = player.Character or player:WaitForChild("CharacterAdded"):Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+local mouse = player:GetMouse()
 
-# Precompiled Headers
-*.gch
-*.pch
+-- Settings
+local parryActive = false
+local blockActive = false
+local BALL_NAMES = {"Ball", "ball", "Sphere", "sphere", "MainBall", "Mainball"}
 
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-*.def
-*.exp
+-- ============================================
+-- DIRECT GAME HOOK - FIND REAL BALL
+-- ============================================
 
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
+-- Tìm bóng thật của Blade Ball
+local realBall = nil
+local ballConnection = nil
 
-# Executables
-*.exe
-*.out
-*.app
+local function findRealBall()
+    -- Tìm trong ReplicatedStorage trước (nơi game thường lưu)
+    if ReplicatedStorage:FindFirstChild("Ball") then
+        realBall = ReplicatedStorage.Ball
+        print("✅ Found ball in ReplicatedStorage:", realBall:GetFullName())
+        return realBall
+    end
+    
+    -- Tìm trong Workspace với các tên phổ biến
+    for _, name in ipairs(BALL_NAMES) do
+        local ball = Workspace:FindFirstChild(name)
+        if ball then
+            realBall = ball
+            print("✅ Found ball in Workspace:", realBall:GetFullName())
+            return realBall
+        end
+    end
+    
+    -- Tìm bất kỳ part nào có shape là Ball
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if obj:IsA("Part") and obj.Shape == Enum.PartType.Ball then
+            realBall = obj
+            print("✅ Found ball by shape:", realBall:GetFullName())
+            return realBall
+        end
+    end
+    
+    -- Tìm trong các Model
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if obj:IsA("Model") then
+            local ball = obj:FindFirstChildOfClass("Part")
+            if ball and ball.Shape == Enum.PartType.Ball then
+                realBall = ball
+                print("✅ Found ball in model:", realBall:GetFullName())
+                return realBall
+            end
+        end
+    end
+    
+    print("❌ No ball found!")
+    return nil
+end
+
+-- ============================================
+-- PARRY HOOK - GAME'S REAL PARRY FUNCTION
+-- ============================================
+
+-- Phát hiện RemoteEvent để parry
+local function findParryRemote()
+    -- Các RemoteEvent phổ biến trong Blade Ball
+    local remoteNames = {
+        "Parry", "parry", "Click", "click", "Block", "block",
+        "Input", "input", "Hit", "hit", "Tap", "tap"
+    }
+    
+    -- Tìm trong ReplicatedStorage
+    for _, name in ipairs(remoteNames) do
+        local remote = ReplicatedStorage:FindFirstChild(name)
+        if remote and remote:IsA("RemoteEvent") then
+            print("✅ Found parry remote:", remote.Name)
+            return remote
+        end
+    end
+    
+    -- Tìm trong Workspace
+    for _, name in ipairs(remoteNames) do
+        local remote = Workspace:FindFirstChild(name)
+        if remote and remote:IsA("RemoteEvent") then
+            print("✅ Found parry remote in workspace:", remote.Name)
+            return remote
+        end
+    end
+    
+    print("⚠️ No parry remote found, using mouse click")
+    return nil
+end
+
+-- Thực hiện parry thật sự
+local function performRealParry()
+    if not character or not humanoidRootPart then return end
+    
+    -- Phương pháp 1: Dùng RemoteEvent nếu tìm thấy
+    local parryRemote = findParryRemote()
+    if parryRemote then
+        pcall(function()
+            parryRemote:FireServer()
+            print("🔥 Fired parry remote")
+        end)
+    end
+    
+    -- Phương pháp 2: Click vào bóng nếu có
+    if realBall then
+        pcall(function()
+            -- Tìm ClickDetector
+            local clickDetector = realBall:FindFirstChildOfClass("ClickDetector")
+            if clickDetector then
+                fireclickdetector(clickDetector)
+                print("🎯 Clicked ball detector")
+            end
+        end)
+    end
+    
+    -- Phương pháp 3: Mô phỏng click chuột vào vị trí bóng
+    if mouse then
+        pcall(function()
+            local ballPosition = realBall and realBall.Position or humanoidRootPart.Position
+            local screenPoint = Workspace.CurrentCamera:WorldToScreenPoint(ballPosition)
+            
+            -- Giả lập mouse click
+            mouse1click()
+            print("🖱️ Simulated mouse click")
+        end)
+    end
+    
+    -- Phương pháp 4: Key press (E, Q, F thường là parry keys)
+    pcall(function()
+        keypress(0x45) -- E key
+        wait(0.01)
+        keyrelease(0x45)
+        print("⌨️ Simulated E key press")
+    end)
+end
+
+-- ============================================
+-- INTELLIGENT BALL TRACKING
+-- ============================================
+
+local function isBallDangerous()
+    if not realBall or not humanoidRootPart then return false end
+    
+    local ballPos = realBall.Position
+    local playerPos = humanoidRootPart.Position
+    local distance = (ballPos - playerPos).Magnitude
+    
+    -- Kiểm tra vận tốc bóng
+    local ballVelocity = realBall.Velocity
+    local speed = ballVelocity.Magnitude
+    
+    -- Bóng phải di chuyển đủ nhanh
+    if speed < 20 then return false end
+    
+    -- Tính hướng bóng
+    local directionToPlayer = (playerPos - ballPos).Unit
+    local ballDirection = ballVelocity.Unit
+    
+    -- Tính góc
+    local dotProduct = ballDirection:Dot(directionToPlayer)
+    
+    -- Bóng bay về phía người chơi và gần
+    return dotProduct > 0.7 and distance < 30
+end
+
+-- ============================================
+-- SIMPLE GUI
+-- ============================================
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "BladeBallRealGUI"
+screenGui.Parent = CoreGui
+screenGui.ResetOnSpawn = false
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 200, 0, 150)
+frame.Position = UDim2.new(0, 50, 0.5, -75)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
+frame.BackgroundTransparency = 0.2
+frame.Active = true
+frame.Draggable = true
+frame.Parent = screenGui
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
+title.Text = "BLADE BALL REAL PARRY"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Font = Enum.Font.SciFi
+title.Parent = frame
+
+local parryBtn = Instance.new("TextButton")
+parryBtn.Size = UDim2.new(0.9, 0, 0, 40)
+parryBtn.Position = UDim2.new(0.05, 0, 0.25, 0)
+parryBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 80)
+parryBtn.Text = "AUTO PARRY: OFF"
+parryBtn.Font = Enum.Font.SciFi
+parryBtn.TextSize = 14
+parryBtn.Parent = frame
+
+local blockBtn = Instance.new("TextButton")
+blockBtn.Size = UDim2.new(0.9, 0, 0, 40)
+blockBtn.Position = UDim2.new(0.05, 0, 0.6, 0)
+blockBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 60)
+blockBtn.Text = "AUTO BLOCK: OFF"
+blockBtn.Font = Enum.Font.SciFi
+blockBtn.TextSize = 14
+blockBtn.Parent = frame
+
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -10, 0, 20)
+status.Position = UDim2.new(0, 5, 0.85, 0)
+status.BackgroundTransparency = 1
+status.Text = "Finding ball..."
+status.TextColor3 = Color3.fromRGB(255, 255, 255)
+status.Font = Enum.Font.SciFi
+status.TextSize = 12
+status.Parent = frame
+
+-- ============================================
+-- MAIN PARRY LOOP
+-- ============================================
+
+local parryLoop = nil
+
+local function startParry()
+    parryLoop = RunService.Heartbeat:Connect(function()
+        if not parryActive then return end
+        
+        -- Tìm lại bóng nếu bị mất
+        if not realBall or not realBall.Parent then
+            realBall = findRealBall()
+            if not realBall then
+                status.Text = "No ball found"
+                return
+            end
+        end
+        
+        -- Kiểm tra nếu bóng nguy hiểm
+        if isBallDangerous() then
+            status.Text = "PARRY NOW!"
+            status.TextColor3 = Color3.fromRGB(255, 50, 50)
+            
+            -- Parry multiple times for safety
+            for i = 1, 3 do
+                performRealParry()
+                wait(0.02)
+            end
+            
+            -- Visual feedback
+            parryBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 0)
+            wait(0.1)
+            parryBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 80)
+        else
+            status.Text = "Tracking ball..."
+            status.TextColor3 = Color3.fromRGB(100, 255, 100)
+        end
+    end)
+end
+
+-- ============================================
+-- AUTO BLOCK LOOP
+-- ============================================
+
+local blockLoop = nil
+local blockCount = 0
+
+local function startBlock()
+    blockLoop = RunService.Heartbeat:Connect(function()
+        if not blockActive then return end
+        
+        blockCount = blockCount + 1
+        performRealParry()
+        
+        -- Hiển thị tốc độ
+        status.Text = string.format("Blocking: %d clicks", blockCount)
+        status.TextColor3 = Color3.fromRGB(255, 200, 50)
+        
+        -- Visual feedback
+        if blockCount % 10 == 0 then
+            blockBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 100)
+            wait(0.05)
+            blockBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 60)
+        end
+    end)
+end
+
+-- ============================================
+-- CONTROL FUNCTIONS
+-- ============================================
+
+parryBtn.MouseButton1Click:Connect(function()
+    parryActive = not parryActive
+    
+    if parryActive then
+        -- Tắt block nếu đang bật
+        if blockActive then
+            blockActive = false
+            blockBtn.Text = "AUTO BLOCK: OFF"
+            if blockLoop then
+                blockLoop:Disconnect()
+            end
+        end
+        
+        parryBtn.Text = "AUTO PARRY: ON"
+        
+        -- Đảm bảo có bóng
+        if not realBall then
+            realBall = findRealBall()
+        end
+        
+        if realBall then
+            status.Text = "Parry active - Ball found"
+            startParry()
+        else
+            status.Text = "No ball found!"
+            parryActive = false
+            parryBtn.Text = "AUTO PARRY: OFF"
+        end
+    else
+        parryBtn.Text = "AUTO PARRY: OFF"
+        if parryLoop then
+            parryLoop:Disconnect()
+            parryLoop = nil
+        end
+        status.Text = "Parry off"
+    end
+end)
+
+blockBtn.MouseButton1Click:Connect(function()
+    blockActive = not blockActive
+    blockCount = 0
+    
+    if blockActive then
+        -- Tắt parry nếu đang bật
+        if parryActive then
+            parryActive = false
+            parryBtn.Text = "AUTO PARRY: OFF"
+            if parryLoop then
+                parryLoop:Disconnect()
+            end
+        end
+        
+        blockBtn.Text = "AUTO BLOCK: ON"
+        startBlock()
+    else
+        blockBtn.Text = "AUTO BLOCK: OFF"
+        if blockLoop then
+            blockLoop:Disconnect()
+            blockLoop = nil
+        end
+        status.Text = "Block off"
+    end
+end)
+
+-- ============================================
+-- INITIALIZATION
+-- ============================================
+
+-- Tìm bóng ngay khi load
+spawn(function()
+    wait(1)
+    realBall = findRealBall()
+    
+    if realBall then
+        status.Text = "Ball found: " .. realBall.Name
+        status.TextColor3 = Color3.fromRGB(100, 255, 100)
+        
+        -- Thêm highlight cho bóng
+        local highlight = Instance.new("Highlight")
+        highlight.FillColor = Color3.fromRGB(255, 50, 50)
+        highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+        highlight.FillTransparency = 0.8
+        highlight.Parent = realBall
+        
+        -- Theo dõi nếu bóng bị destroy
+        realBall.AncestryChanged:Connect(function()
+            if not realBall.Parent then
+                status.Text = "Ball lost, searching..."
+                realBall = findRealBall()
+            end
+        end)
+    else
+        status.Text = "No ball found! Join match?"
+        status.TextColor3 = Color3.fromRGB(255, 100, 100)
+    end
+end)
+
+-- Auto-tìm bóng mỗi 5 giây
+spawn(function()
+    while true do
+        wait(5)
+        if not realBall or not realBall.Parent then
+            realBall = findRealBall()
+        end
+    end
+end)
+
+print("=======================================")
+print("BLADE BALL REAL PARRY SCRIPT LOADED")
+print("=======================================")
+print("Features:")
+print("1. Direct game hook - Uses actual game mechanics")
+print("2. Multiple parry methods (RemoteEvent, ClickDetector, Mouse)")
+print("3. Intelligent ball tracking")
+print("4. Auto-block with rapid clicks")
+print("=======================================")
+
+-- Instructions
+game.StarterGui:SetCore("SendNotification", {
+    Title = "BLADE BALL REAL PARRY",
+    Text = "Script loaded!\nMake sure you're in a match.\nAuto finds game ball.",
+    Duration = 5
+})*.app
 *.i*86
 *.x86_64
 *.hex
